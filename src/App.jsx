@@ -10,7 +10,7 @@ export default function App() {
   const [selectedFile, setSelectedFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [progress, setProgress] = useState(0);
-  const [result, setResult] = useState({ probability: 0, label: '', is_fake: false });
+  const [result, setResult] = useState({ probability: 0, label: '', is_fake: false, confidence: '' });
 
   const onFileChange = (e) => {
     const file = e.target.files[0];
@@ -41,7 +41,8 @@ export default function App() {
         setResult({
           probability: Number(data.probability),
           label: data.label,
-          is_fake: data.is_fake
+          is_fake: data.is_fake,
+          confidence: data.confidence || ''
         });
         setStatus('result');
       }, 600);
@@ -54,6 +55,16 @@ export default function App() {
   const radius = 80;
   const circumference = Math.PI * radius;
   const strokeDashoffset = circumference - (circumference * (result.probability / 100));
+
+  const confidenceStyle = (level) => {
+    const map = {
+      high:      { bg: 'bg-emerald-500/20', text: 'text-emerald-300', border: 'border-emerald-500/40', label: 'High confidence' },
+      medium:    { bg: 'bg-cyan-500/20',    text: 'text-cyan-300',    border: 'border-cyan-500/40',    label: 'Medium confidence' },
+      low:       { bg: 'bg-amber-500/20',   text: 'text-amber-300',   border: 'border-amber-500/40',   label: 'Low confidence' },
+      uncertain: { bg: 'bg-red-500/20',     text: 'text-red-300',     border: 'border-red-500/40',     label: 'Uncertain' },
+    };
+    return map[level] || null;
+  };
 
   return (
     <div className="min-h-screen text-white flex flex-col font-sans overflow-hidden">
@@ -123,7 +134,7 @@ export default function App() {
                  </div>
 
                  <div className="flex flex-col items-center">
-                    <div className="relative mb-10">
+                    <div className="relative mb-6">
                         <svg width="240" height="130" viewBox="0 0 200 110">
                             <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#1a2e3e" strokeWidth="14" strokeLinecap="round" />
                             <path 
@@ -146,6 +157,16 @@ export default function App() {
                     <h3 className={`text-4xl font-bold tracking-tighter text-center ${result.is_fake ? 'text-red-500' : 'text-green-500'}`}>
                       {result.is_fake ? "AI Generated / Fake" : "Authentic Media"}
                     </h3>
+
+                    {/* CONFIDENCE BADGE */}
+                    {result.confidence && confidenceStyle(result.confidence) && (
+                      <div className={`mt-4 px-4 py-1.5 rounded-full border text-sm font-semibold tracking-wide
+                        ${confidenceStyle(result.confidence).bg}
+                        ${confidenceStyle(result.confidence).text}
+                        ${confidenceStyle(result.confidence).border}`}>
+                        {confidenceStyle(result.confidence).label}
+                      </div>
+                    )}
                  </div>
               </div>
             )}

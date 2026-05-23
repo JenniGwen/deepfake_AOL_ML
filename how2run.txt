@@ -23,17 +23,23 @@ PART 1: BACKEND SETUP (AI MODEL)
    cd isitfake/backend
 
 3. Install the required Python libraries:
-   pip install flask flask-cors onnxruntime numpy Pillow requests
+   pip install flask flask-cors onnxruntime numpy Pillow scipy torch timm opencv-python-headless
 
-4. Download the AI Model (if you haven't yet):
-   python download_model.py
-   (Ensure a file named 'model.onnx' appears in the folder)
+   (This may take a few minutes — torch is ~800MB.)
+
+4. Verify model files exist in the backend folder:
+   - best_model.pth          (CNN weights, ~17 MB)
+   - svm_linear_model.onnx   (SVM classifier, ~64 KB)
+
+   If missing, copy them from your training output / Google Drive.
 
 5. Start the Backend Server:
    python app.py
-   
-   *Keep this terminal open.* It should say:
-   "AI Backend: Deep-Fake-Detector-v2 loaded successfully"
+
+   *Keep this terminal open.* It should print:
+   "✅ CNN feature extractor loaded"
+   "✅ SVM ONNX loaded — input 'features', expects [None, 1536]"
+   "✅ Decision threshold: 0.35 (lowered from default 0.5)"
    "Running on http://127.0.0.1:5000"
 
 ------------------------------------------------------------
@@ -65,22 +71,40 @@ HOW TO USE THE PLATFORM
 1. On the website, click the "Upload" icon or drag an image.
 2. Once the preview appears, click "Run Analysis."
 3. The "Aura" glow will appear while the AI is thinking.
-4. View the result (Percentage and Verdict) on the gauge screen.
+4. View the result (Percentage, Verdict, and Confidence level)
+   on the gauge screen.
+
+   Confidence levels:
+   - HIGH:      Strong signal, trust the prediction
+   - MEDIUM:    Reasonable signal
+   - LOW:       Weak signal, treat with caution
+   - UNCERTAIN: Near the decision boundary, prediction unreliable
 
 ------------------------------------------------------------
 TROUBLESHOOTING
 ------------------------------------------------------------
-- "Analysis stays at 0%": 
-   Check the Python terminal. If there are no logs, the 
-   backend isn't talking to the frontend. Ensure Flask is 
+- "Analysis stays at 0%":
+   Check the Python terminal. If there are no logs, the
+   backend isn't talking to the frontend. Ensure Flask is
    running on port 5000.
 
-- "Website is white/blank": 
-   Check the terminal for a "Parse Error." Ensure there are 
-   no missing tags in App.jsx (e.g., ensure </footer> matches 
+- "Website is white/blank":
+   Check the terminal for a "Parse Error." Ensure there are
+   no missing tags in App.jsx (e.g., ensure </footer> matches
    <footer>).
 
-- "Model not found": 
-   Ensure 'model.onnx' is located in the same folder 
-   as 'app.py'.
+- "ModuleNotFoundError: No module named 'torch'":
+   Re-run the pip install command in Part 1, step 3. Make
+   sure ALL libraries listed there are installed.
+
+- "Model not found" / "FileNotFoundError":
+   Ensure both 'best_model.pth' AND 'svm_linear_model.onnx'
+   are in the same folder as 'app.py'.
+
+- Predictions seem inaccurate:
+   This is an experimental model trained on a mixed dataset.
+   Accuracy on independent test data is around 55-65%, and
+   predictions on out-of-distribution images (e.g. high-quality
+   modern deepfakes, low-res video frames) may be unreliable.
+   Treat results as guidance, not ground truth.
 ============================================================
