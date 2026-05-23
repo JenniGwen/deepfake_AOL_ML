@@ -1,0 +1,86 @@
+============================================================
+ISITFAKE? - DEEPFAKE DETECTION PLATFORM
+============================================================
+
+This project consists of two parts:
+1. Python Backend (Flask + AI Model)
+2. React Frontend (Vite + Tailwind CSS v4)
+
+Follow these steps exactly to run the platform.
+
+------------------------------------------------------------
+PREREQUISITES
+------------------------------------------------------------
+Before starting, ensure you have installed:
+- Node.js (LTS version)
+- Python (3.10 or higher)
+
+------------------------------------------------------------
+PART 1: BACKEND SETUP (AI MODEL)
+------------------------------------------------------------
+1. Open a new terminal / command prompt.
+2. Navigate to the backend folder:
+   cd isitfake/backend
+
+3. Install the required Python libraries:
+   pip install flask flask-cors onnxruntime numpy Pillow requests
+
+4. Download the AI Model (if you haven't yet):
+   python download_model.py
+   (Ensure a file named 'model.onnx' appears in the folder)
+
+5. Start the Backend Server:
+   python app.py
+   
+   *Keep this terminal open.* It should say:
+   "AI Backend: Deep-Fake-Detector-v2 loaded successfully"
+   "Running on http://127.0.0.1:5000"
+
+------------------------------------------------------------
+PART 2: FRONTEND SETUP (WEBSITE)
+------------------------------------------------------------
+1. Open a SECOND terminal / command prompt.
+2. Navigate to the main project folder:
+   cd isitfake
+
+3. Install the project dependencies:
+   npm install
+
+4. Ensure your assets are in place:
+   Check that 'src/assets/' contains:
+   - logo.png
+   - upload-icon.png
+   - footer-bar.png
+   - aura.png
+
+5. Start the Website:
+   npm run dev
+
+6. Open your browser to the link shown:
+   http://localhost:5173
+
+------------------------------------------------------------
+HOW TO USE THE PLATFORM
+------------------------------------------------------------
+1. On the website, click the "Upload" icon or drag an image.
+2. Once the preview appears, click "Run Analysis."
+3. The "Aura" glow will appear while the AI is thinking.
+4. View the result (Percentage and Verdict) on the gauge screen.
+
+------------------------------------------------------------
+TROUBLESHOOTING
+------------------------------------------------------------
+- "Analysis stays at 0%": 
+   Check the Python terminal. If there are no logs, the 
+   backend isn't talking to the frontend. Ensure Flask is 
+   running on port 5000.
+
+- "Website is white/blank": 
+   Check the terminal for a "Parse Error." Ensure there are 
+   no missing tags in App.jsx (e.g., ensure </footer> matches 
+   <footer>).
+
+- "Model not found": 
+   Ensure 'model.onnx' is located in the same folder 
+   as 'app.py'.
+============================================================
