@@ -7,12 +7,16 @@ Pipeline:
       ├── FFT azimuthal avg at 256×256                                          →  128
       └── noise (gray - GaussianBlur) FFT azimuthal avg at 256×256              →  128
                                                                                  ────
-                                                                                 1536  → SVM (ONNX)
+                                                                                 1536  → StandardScaler → SVM (ONNX)
+
+IMPORTANT: The SVM was trained on StandardScaler-normalized features.
+           scaler.pkl must be present in the backend folder.
+           Without it, predictions collapse to 0%/100%.
 
 Threshold tuned to 0.35 based on independent test set analysis.
 
 Run:
-    pip install flask flask-cors onnxruntime torch timm opencv-python-headless scipy numpy pillow
+    pip install flask flask-cors onnxruntime torch timm opencv-python-headless scipy numpy pillow scikit-learn
     python app.py
 """
 
@@ -28,6 +32,8 @@ import timm
 from torchvision import transforms
 from scipy import ndimage
 from PIL import Image
+import joblib
+import os
 
 app = Flask(__name__)
 CORS(app)
@@ -38,13 +44,21 @@ CORS(app)
 FFT_SIZE = 256
 AZ_BINS = FFT_SIZE // 2           # 128
 CNN_WEIGHTS_PATH = "best_model.pth"
-SVM_ONNX_PATH    = "svm_linear_model.onnx"
+SVM_ONNX_PATH    = "svm_linear_modelTERBARU.onnx"
+SCALER_PATH      = "scaler.pkl"
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Tuned threshold based on independent test set analysis.
 # SVM default = 0.5 → biased toward "real" predictions.
 # 0.35 = more balanced.
 DECISION_THRESHOLD = 0.35
+
+# Temperature scaling: corrects isotonic-calibrated SVM probabilities.
+# Isotonic regression is a step-function — with a LinearSVC it learns only
+# ~10-50 discrete probability levels, most inputs collapse to 0.333 or 0.667.
+# Temperature T > 1 spreads probabilities into a continuous range.
+# T=3 is a reasonable default; increase to soften further.
+CALIBRATION_TEMPERATURE = 3.0
 
 # ---------------------------------------------------------------------------
 # CNN feature extractor (4-channel EfficientNet-B0)
@@ -81,6 +95,24 @@ svm_session = ort.InferenceSession(SVM_ONNX_PATH, providers=["CPUExecutionProvid
 SVM_INPUT_NAME = svm_session.get_inputs()[0].name
 print(f"✅ SVM ONNX loaded — input '{SVM_INPUT_NAME}', expects {svm_session.get_inputs()[0].shape}")
 print(f"✅ Decision threshold: {DECISION_THRESHOLD} (lowered from default 0.5)")
+print("\n--- SVM ONNX Outputs ---")
+for out in svm_session.get_outputs():
+    print(f"  name={out.name!r}  shape={out.shape}  type={out.type}")
+print("------------------------\n")
+
+# Load the fitted StandardScaler — CRITICAL for correct probabilities.
+# The SVM was trained on StandardScaler-normalized features.
+# Without this, raw CNN features (large magnitude) cause probabilities to
+# collapse to 0% or 100%.
+if os.path.exists(SCALER_PATH):
+    feature_scaler = joblib.load(SCALER_PATH)
+    print(f"✅ StandardScaler loaded from {SCALER_PATH}")
+    print(f"   mean range: [{feature_scaler.mean_.min():.3f}, {feature_scaler.mean_.max():.3f}]")
+    print(f"   scale range: [{feature_scaler.scale_.min():.3f}, {feature_scaler.scale_.max():.3f}]")
+else:
+    feature_scaler = None
+    print(f"⚠️  WARNING: {SCALER_PATH} not found — predictions will be 0% or 100%!")
+    print(f"   Run the notebook and save: joblib.dump(svm_model.named_steps['scaler'], 'scaler.pkl')")
 
 torch_transform = transforms.Compose([
     transforms.ToPILImage(),
@@ -162,17 +194,36 @@ def analyze():
 
         features = extract_combined_features(img_bgr).reshape(1, -1)
 
-        label_arr, prob_list = svm_session.run(None, {SVM_INPUT_NAME: features})
-        prob_dict = prob_list[0]
-        p_fake = float(prob_dict[1])
-        p_real = float(prob_dict[0])
+        # Apply the same StandardScaler used during SVM training.
+        # Without this step, the SVM receives out-of-distribution features
+        # and its decision scores become extreme → probabilities collapse to 0/1.
+        if feature_scaler is not None:
+            features = feature_scaler.transform(features).astype(np.float32)
 
-        # Apply tuned threshold instead of default 0.5
-        is_fake = p_fake >= DECISION_THRESHOLD
+        label_arr, prob_list = svm_session.run(None, {SVM_INPUT_NAME: features})
+        for out in svm_session.get_outputs():
+            print(out.name, out.shape, out.type)
+        prob_dict = prob_list[0]
+        p_fake_raw = float(prob_dict[1])
+
+        # --- Temperature Scaling ---
+        # Isotonic calibration produces a step-function with only ~10-50 discrete
+        # probability levels (e.g. 0.0, 0.333, 0.667, 1.0). Most real inputs land
+        # on one of these steps. Temperature scaling converts the logit of p_fake
+        # into a smooth, continuous probability: p = sigmoid(logit(p_raw) / T).
+        # T > 1 spreads extreme values toward 0.5 (less overconfident output).
+        eps = 1e-6
+        p_clipped = float(np.clip(p_fake_raw, eps, 1.0 - eps))
+        logit_p = np.log(p_clipped / (1.0 - p_clipped))
+        p_fake = float(1.0 / (1.0 + np.exp(-logit_p / CALIBRATION_TEMPERATURE)))
+        p_real = 1.0 - p_fake
+
+        # Use the SVM's own label output (more reliable than thresholding scaled prob)
+        is_fake = bool(int(label_arr[0]) == 1)
         confidence = get_confidence_level(p_fake)
 
         display_percent = round(p_fake * 100, 2)
-        print(f"DEBUG: p_fake={p_fake:.4f}  threshold={DECISION_THRESHOLD}  "
+        print(f"DEBUG: raw={p_fake_raw:.4f}  temp_scaled={p_fake:.4f}  "
               f"label={'FAKE' if is_fake else 'REAL'}  confidence={confidence}")
 
         return jsonify({
