@@ -30,7 +30,7 @@ export default function App() {
     formData.append('image', selectedFile);
 
     try {
-      const response = await fetch('http://localhost:5000/analyze', {
+      const response = await fetch('https://jennigwen-deepfake-detector-api.hf.space/analyze', {
         method: 'POST',
         body: formData,
       });
