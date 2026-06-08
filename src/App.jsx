@@ -67,7 +67,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen text-white flex flex-col font-sans overflow-hidden">
+    <div className="bg-gradient-to-b from-[#3DACDF]/30 to-[#040505]/45 min-h-screen text-white flex flex-col font-sans overflow-hidden">
       
       {/* HEADER: -15px margin adjustment */}
       <header className="p-8 mt-[-15px] flex items-center justify-between z-50">
@@ -182,7 +182,7 @@ export default function App() {
 
       {/* FOOTER BAR: Height changed from h-12 to h-8 for a smaller look */}
       <footer className="w-full mt-auto relative z-20">
-        <img src={footerBar} alt="glow bar" className="w-full h-8 object-cover block" />
+        <img src={footerBar} alt="glow bar" className="w-full h-8 object-cover block opacity-65" />
       </footer>
     </div>
   );
