@@ -43,21 +43,15 @@ CORS(app)
 # ---------------------------------------------------------------------------
 FFT_SIZE = 256
 AZ_BINS = FFT_SIZE // 2           # 128
-CNN_WEIGHTS_PATH = "best_model.pth"
-SVM_ONNX_PATH    = "svm_linear_modelTERBARU.onnx"
-SCALER_PATH      = "scaler.pkl"
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CNN_WEIGHTS_PATH = os.path.join(BASE_DIR, "best_model.pth")
+SVM_ONNX_PATH    = os.path.join(BASE_DIR, "svm_linear_modelTERBARU.onnx")
+SCALER_PATH      = os.path.join(BASE_DIR, "scaler.pkl")
+
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# Tuned threshold based on independent test set analysis.
-# SVM default = 0.5 → biased toward "real" predictions.
-# 0.35 = more balanced.
 DECISION_THRESHOLD = 0.35
-
-# Temperature scaling: corrects isotonic-calibrated SVM probabilities.
-# Isotonic regression is a step-function — with a LinearSVC it learns only
-# ~10-50 discrete probability levels, most inputs collapse to 0.333 or 0.667.
-# Temperature T > 1 spreads probabilities into a continuous range.
-# T=3 is a reasonable default; increase to soften further.
 CALIBRATION_TEMPERATURE = 3.0
 
 # ---------------------------------------------------------------------------
@@ -100,10 +94,6 @@ for out in svm_session.get_outputs():
     print(f"  name={out.name!r}  shape={out.shape}  type={out.type}")
 print("------------------------\n")
 
-# Load the fitted StandardScaler — CRITICAL for correct probabilities.
-# The SVM was trained on StandardScaler-normalized features.
-# Without this, raw CNN features (large magnitude) cause probabilities to
-# collapse to 0% or 100%.
 if os.path.exists(SCALER_PATH):
     feature_scaler = joblib.load(SCALER_PATH)
     print(f"✅ StandardScaler loaded from {SCALER_PATH}")
@@ -112,7 +102,6 @@ if os.path.exists(SCALER_PATH):
 else:
     feature_scaler = None
     print(f"⚠️  WARNING: {SCALER_PATH} not found — predictions will be 0% or 100%!")
-    print(f"   Run the notebook and save: joblib.dump(svm_model.named_steps['scaler'], 'scaler.pkl')")
 
 torch_transform = transforms.Compose([
     transforms.ToPILImage(),
@@ -169,7 +158,6 @@ def extract_combined_features(img_bgr: np.ndarray) -> np.ndarray:
 
 
 def get_confidence_level(p_fake: float) -> str:
-    """Distance from decision threshold = confidence."""
     distance = abs(p_fake - DECISION_THRESHOLD)
     if distance < 0.10:
         return "uncertain"
@@ -179,6 +167,11 @@ def get_confidence_level(p_fake: float) -> str:
         return "medium"
     else:
         return "high"
+
+
+@app.route("/", methods=["GET"])
+def health():
+    return jsonify({"status": "ok", "message": "Deepfake detector backend is running."})
 
 
 @app.route("/analyze", methods=["POST"])
@@ -194,9 +187,6 @@ def analyze():
 
         features = extract_combined_features(img_bgr).reshape(1, -1)
 
-        # Apply the same StandardScaler used during SVM training.
-        # Without this step, the SVM receives out-of-distribution features
-        # and its decision scores become extreme → probabilities collapse to 0/1.
         if feature_scaler is not None:
             features = feature_scaler.transform(features).astype(np.float32)
 
@@ -206,19 +196,12 @@ def analyze():
         prob_dict = prob_list[0]
         p_fake_raw = float(prob_dict[1])
 
-        # --- Temperature Scaling ---
-        # Isotonic calibration produces a step-function with only ~10-50 discrete
-        # probability levels (e.g. 0.0, 0.333, 0.667, 1.0). Most real inputs land
-        # on one of these steps. Temperature scaling converts the logit of p_fake
-        # into a smooth, continuous probability: p = sigmoid(logit(p_raw) / T).
-        # T > 1 spreads extreme values toward 0.5 (less overconfident output).
         eps = 1e-6
         p_clipped = float(np.clip(p_fake_raw, eps, 1.0 - eps))
         logit_p = np.log(p_clipped / (1.0 - p_clipped))
         p_fake = float(1.0 / (1.0 + np.exp(-logit_p / CALIBRATION_TEMPERATURE)))
         p_real = 1.0 - p_fake
 
-        # Use the SVM's own label output (more reliable than thresholding scaled prob)
         is_fake = bool(int(label_arr[0]) == 1)
         confidence = get_confidence_level(p_fake)
 
@@ -242,4 +225,5 @@ def analyze():
 
 
 if __name__ == "__main__":
-    app.run(port=5000, debug=False)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=False)
