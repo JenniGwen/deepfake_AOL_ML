@@ -1,0 +1,9 @@
+flask
+flask-cors
+onnxruntime
+numpy
+Pillow
+scipy
+torch
+timm
+opencv-python-headless
