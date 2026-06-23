@@ -35,6 +35,7 @@ export default function App() {
 
     try {
       const response = await fetch('https://jennigwen-deepfake-detector-api.hf.space/analyze', {
+      // const response = await fetch('http://localhost:5000/analyze', {
         method: 'POST',
         body: formData,
       });
